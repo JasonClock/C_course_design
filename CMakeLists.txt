@@ -6,6 +6,7 @@ set(CMAKE_C_STANDARD 99)
 add_executable(C
         main.c
         information/src/hotel.c
+        information/src/hotel_storage.c
         information/src/menu.c
         information/src/role.c
         information/src/input.c)

@@ -557,6 +557,8 @@ void hotel_check_in(Room *head) {
     Date checkInDate;
     Room *room;
     Reservation *res;
+    char actualGuestName[NAME_LEN];
+    char actualPhone[PHONE_LEN];
 
     cleanup_expired_locks(head);
 
@@ -592,6 +594,21 @@ void hotel_check_in(Room *head) {
         printf("Check-in denied: payment is not completed.\n");
         return;
     }
+
+    if (!input_read_line("Enter check-in guest name: ", actualGuestName, NAME_LEN) || actualGuestName[0] == '\0') {
+        printf("Check-in failed: guest name is required.\n");
+        return;
+    }
+
+    if (!input_read_line("Enter check-in contact phone: ", actualPhone, PHONE_LEN) || actualPhone[0] == '\0') {
+        printf("Check-in failed: contact phone is required.\n");
+        return;
+    }
+
+    strncpy(res->guestName, actualGuestName, NAME_LEN - 1);
+    res->guestName[NAME_LEN - 1] = '\0';
+    strncpy(res->phone, actualPhone, PHONE_LEN - 1);
+    res->phone[PHONE_LEN - 1] = '\0';
 
     res->checkedIn = 1;
     printf("Check-in successful: Room %d, Guest %s.\n", room->roomNumber, res->guestName);

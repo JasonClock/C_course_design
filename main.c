@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "hotel.h"
+#include "hotel_storage.h"
 #include "menu.h"
 
 static UserRole read_user_role(void) {
@@ -19,7 +20,9 @@ int main(void) {
     const UserOps *ops;
     Room *roomList = NULL;
 
-    hotel_init(&roomList);
+    if (!hotel_storage_load(&roomList, "data_house")) {
+        hotel_init(&roomList);
+    }
     role = read_user_role();
     ops = role_get_ops(role);
 
@@ -40,6 +43,9 @@ int main(void) {
         result = ops->execute(choice, &roomList);
 
         if (result == 0) {
+            if (!hotel_storage_save(roomList, "data_house")) {
+                printf("Warning: failed to save data to data_house.\n");
+            }
             hotel_free(roomList);
             printf("System exited.\n");
             return 0;
