@@ -48,10 +48,10 @@ int main(void) {
                 break;
             case 0:
                 hotel_free(roomList);
-                printf("系统已退出。\n");
+                printf("System exited.\n");
                 return 0;
             default:
-                printf("请输入有效数字。\n");
+                printf("Please enter a valid number.\n");
                 break;
         }
     }
