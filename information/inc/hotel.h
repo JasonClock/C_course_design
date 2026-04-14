@@ -14,23 +14,29 @@ typedef enum {
     ROOM_OCCUPIED = 2
 } RoomStatus;
 
+typedef struct Reservation {
+    int startDay;
+    int endDay;
+    int checkedIn;
+    char guestName[NAME_LEN];
+    char phone[PHONE_LEN];
+    struct Reservation *next;
+} Reservation;
+
 typedef struct Room {
     int roomNumber;
     int roomType;
     double price;
-    RoomStatus status;
-    char guestName[NAME_LEN];
-    char phone[PHONE_LEN];
-    int stayDays;
+    Reservation *reservations;
     struct Room *next;
 } Room;
-
+/*创建与删除房间*/
 void hotel_init(Room **head);
 void hotel_free(Room *head);
-
+/*查询房间*/
 void hotel_list_all(Room *head);
 void hotel_list_available(Room *head);
-
+/*对房间操作*/
 void hotel_reserve(Room *head);
 void hotel_cancel_reservation(Room *head);
 void hotel_check_in(Room *head);

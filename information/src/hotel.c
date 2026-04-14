@@ -9,27 +9,30 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *status_to_text(RoomStatus status) {
-    if (status == ROOM_AVAILABLE) return "Available";
-    if (status == ROOM_RESERVED) return "Reserved";
-    return "Occupied";
-}
-
-static Room *create_room(int number, int type, double price) {
-    Room *room = (Room *)malloc(sizeof(Room));
-    if (room == NULL) {
+static Reservation *create_reservation(const char *guestName, const char *phone, int startDay, int endDay) {
+    Reservation *node = (Reservation *)malloc(sizeof(Reservation));
+    if (node == NULL) {
         return NULL;
     }
 
-    room->roomNumber = number;
-    room->roomType = type;
-    room->price = price;
-    room->status = ROOM_AVAILABLE;
-    room->guestName[0] = '\0';
-    room->phone[0] = '\0';
-    room->stayDays = 0;
-    room->next = NULL;
-    return room;
+    node->startDay = startDay;
+    node->endDay = endDay;
+    node->checkedIn = 0;
+    strncpy(node->guestName, guestName, NAME_LEN - 1);
+    node->guestName[NAME_LEN - 1] = '\0';
+    strncpy(node->phone, phone, PHONE_LEN - 1);
+    node->phone[PHONE_LEN - 1] = '\0';
+    node->next = NULL;
+    return node;
+}
+
+static void free_reservations(Reservation *head) {
+    Reservation *next;
+    while (head != NULL) {
+        next = head->next;
+        free(head);
+        head = next;
+    }
 }
 
 static void append_room(Room **head, Room *node) {
@@ -47,6 +50,20 @@ static void append_room(Room **head, Room *node) {
     current->next = node;
 }
 
+static Room *create_room(int number, int type, double price) {
+    Room *room = (Room *)malloc(sizeof(Room));
+    if (room == NULL) {
+        return NULL;
+    }
+
+    room->roomNumber = number;
+    room->roomType = type;
+    room->price = price;
+    room->reservations = NULL;
+    room->next = NULL;
+    return room;
+}
+
 static Room *find_room(Room *head, int roomNumber) {
     while (head != NULL) {
         if (head->roomNumber == roomNumber) {
@@ -57,20 +74,6 @@ static Room *find_room(Room *head, int roomNumber) {
     return NULL;
 }
 
-static void reset_guest_info(Room *room) {
-    room->guestName[0] = '\0';
-    room->phone[0] = '\0';
-    room->stayDays = 0;
-}
-
-static void print_room(const Room *room) {
-    printf("Room:%d | Type:%d | Price:%.2f | Status:%s", room->roomNumber, room->roomType, room->price, status_to_text(room->status));
-    if (room->status != ROOM_AVAILABLE) {
-        printf(" | Guest:%s | Phone:%s | Days:%d", room->guestName, room->phone, room->stayDays);
-    }
-    printf("\n");
-}
-
 static int input_room_number(void) {
     int roomNumber;
     if (!input_read_int("Enter room number: ", &roomNumber)) {
@@ -79,18 +82,112 @@ static int input_room_number(void) {
     return roomNumber;
 }
 
-static int input_stay_days(void) {
-    int days;
-    if (!input_read_int("Enter number of stay days: ", &days) || days <= 0) {
-        return -1;
+static int input_period(int *startDay, int *endDay) {
+    if (!input_read_int("Enter start day (integer): ", startDay)) {
+        return 0;
     }
-    return days;
+    if (!input_read_int("Enter end day (integer, exclusive): ", endDay)) {
+        return 0;
+    }
+    if (*startDay < 0 || *endDay <= *startDay) {
+        return 0;
+    }
+    return 1;
 }
 
-static void input_guest_info(Room *room) {
-    input_read_line("Enter guest name: ", room->guestName, NAME_LEN);
-    input_read_line("Enter contact phone: ", room->phone, PHONE_LEN);
-    room->stayDays = input_stay_days();
+static int periods_overlap(int startA, int endA, int startB, int endB) {
+    return !(endA <= startB || endB <= startA);
+}
+
+static int room_has_overlap(const Room *room, int startDay, int endDay) {
+    const Reservation *current = room->reservations;
+    while (current != NULL) {
+        if (periods_overlap(startDay, endDay, current->startDay, current->endDay)) {
+            return 1;
+        }
+        current = current->next;
+    }
+    return 0;
+}
+
+static void insert_reservation_sorted(Room *room, Reservation *node) {
+    Reservation *current;
+    Reservation *prev = NULL;
+
+    current = room->reservations;
+    while (current != NULL && current->startDay <= node->startDay) {
+        prev = current;
+        current = current->next;
+    }
+
+    if (prev == NULL) {
+        node->next = room->reservations;
+        room->reservations = node;
+    } else {
+        node->next = current;
+        prev->next = node;
+    }
+}
+
+static Reservation *find_exact_reservation(Room *room, int startDay, int endDay, Reservation **outPrev) {
+    Reservation *current = room->reservations;
+    Reservation *prev = NULL;
+
+    while (current != NULL) {
+        if (current->startDay == startDay && current->endDay == endDay) {
+            if (outPrev != NULL) {
+                *outPrev = prev;
+            }
+            return current;
+        }
+        prev = current;
+        current = current->next;
+    }
+
+    if (outPrev != NULL) {
+        *outPrev = NULL;
+    }
+    return NULL;
+}
+
+static Reservation *find_reservation_by_day(Room *room, int day) {
+    Reservation *current = room->reservations;
+    while (current != NULL) {
+        if (current->startDay <= day && day < current->endDay) {
+            return current;
+        }
+        current = current->next;
+    }
+    return NULL;
+}
+
+static const char *reservation_state_text(int checkedIn) {
+    return checkedIn ? "Checked-in" : "Reserved";
+}
+
+static void print_reservation(const Reservation *res, double price) {
+    printf("  - [%d, %d) | %s | Guest:%s | Phone:%s | Bill:%.2f\n",
+           res->startDay,
+           res->endDay,
+           reservation_state_text(res->checkedIn),
+           res->guestName,
+           res->phone,
+           price * (res->endDay - res->startDay));
+}
+
+static void print_room(const Room *room) {
+    const Reservation *res = room->reservations;
+
+    printf("Room:%d | Type:%d | Price:%.2f\n", room->roomNumber, room->roomType, room->price);
+    if (res == NULL) {
+        printf("  - No reservations\n");
+        return;
+    }
+
+    while (res != NULL) {
+        print_reservation(res, room->price);
+        res = res->next;
+    }
 }
 
 void hotel_init(Room **head) {
@@ -114,6 +211,7 @@ void hotel_free(Room *head) {
     Room *next;
     while (head != NULL) {
         next = head->next;
+        free_reservations(head->reservations);
         free(head);
         head = next;
     }
@@ -124,6 +222,7 @@ void hotel_list_all(Room *head) {
         printf("No room information is available.\n");
         return;
     }
+
     while (head != NULL) {
         print_room(head);
         head = head->next;
@@ -131,23 +230,38 @@ void hotel_list_all(Room *head) {
 }
 
 void hotel_list_available(Room *head) {
+    int startDay;
+    int endDay;
     int found = 0;
+
+    if (!input_period(&startDay, &endDay)) {
+        printf("Invalid period input.\n");
+        return;
+    }
+
     while (head != NULL) {
-        if (head->status == ROOM_AVAILABLE) {
-            print_room(head);
+        if (!room_has_overlap(head, startDay, endDay)) {
+            printf("Room:%d | Type:%d | Price:%.2f\n", head->roomNumber, head->roomType, head->price);
             found = 1;
         }
         head = head->next;
     }
+
     if (!found) {
-        printf("No available rooms at the moment.\n");
+        printf("No available rooms for [%d, %d).\n", startDay, endDay);
     }
 }
 
 void hotel_reserve(Room *head) {
-    int roomNumber = input_room_number();
+    int roomNumber;
+    int startDay;
+    int endDay;
+    char guestName[NAME_LEN];
+    char phone[PHONE_LEN];
     Room *room;
+    Reservation *node;
 
+    roomNumber = input_room_number();
     if (roomNumber < 0) {
         printf("Invalid room number input.\n");
         return;
@@ -159,26 +273,45 @@ void hotel_reserve(Room *head) {
         return;
     }
 
-    if (room->status != ROOM_AVAILABLE) {
-        printf("This room is not currently available.\n");
+    if (!input_period(&startDay, &endDay)) {
+        printf("Invalid period input.\n");
         return;
     }
 
-    input_guest_info(room);
-    if (room->stayDays <= 0 || room->guestName[0] == '\0') {
-        reset_guest_info(room);
-        printf("Reservation failed: incomplete input.\n");
+    if (room_has_overlap(room, startDay, endDay)) {
+        printf("Reservation failed: period conflict in this room.\n");
         return;
     }
 
-    room->status = ROOM_RESERVED;
-    printf("Reservation successful: Room %d, estimated cost %.2f\n", room->roomNumber, room->price * room->stayDays);
+    if (!input_read_line("Enter guest name: ", guestName, NAME_LEN) || guestName[0] == '\0') {
+        printf("Reservation failed: guest name is required.\n");
+        return;
+    }
+
+    if (!input_read_line("Enter contact phone: ", phone, PHONE_LEN) || phone[0] == '\0') {
+        printf("Reservation failed: phone is required.\n");
+        return;
+    }
+
+    node = create_reservation(guestName, phone, startDay, endDay);
+    if (node == NULL) {
+        printf("Reservation failed: out of memory.\n");
+        return;
+    }
+
+    insert_reservation_sorted(room, node);
+    printf("Reservation successful: Room %d, period [%d, %d).\n", room->roomNumber, startDay, endDay);
 }
 
 void hotel_cancel_reservation(Room *head) {
-    int roomNumber = input_room_number();
+    int roomNumber;
+    int startDay;
+    int endDay;
     Room *room;
+    Reservation *target;
+    Reservation *prev;
 
+    roomNumber = input_room_number();
     if (roomNumber < 0) {
         printf("Invalid room number input.\n");
         return;
@@ -190,20 +323,39 @@ void hotel_cancel_reservation(Room *head) {
         return;
     }
 
-    if (room->status != ROOM_RESERVED) {
-        printf("This room is not reserved, cannot cancel.\n");
+    if (!input_period(&startDay, &endDay)) {
+        printf("Invalid period input.\n");
         return;
     }
 
-    room->status = ROOM_AVAILABLE;
-    reset_guest_info(room);
+    target = find_exact_reservation(room, startDay, endDay, &prev);
+    if (target == NULL) {
+        printf("No matching reservation for this period.\n");
+        return;
+    }
+
+    if (target->checkedIn) {
+        printf("Cannot cancel: this reservation is already checked in.\n");
+        return;
+    }
+
+    if (prev == NULL) {
+        room->reservations = target->next;
+    } else {
+        prev->next = target->next;
+    }
+
+    free(target);
     printf("Reservation cancelled.\n");
 }
 
 void hotel_check_in(Room *head) {
-    int roomNumber = input_room_number();
+    int roomNumber;
+    int day;
     Room *room;
+    Reservation *res;
 
+    roomNumber = input_room_number();
     if (roomNumber < 0) {
         printf("Invalid room number input.\n");
         return;
@@ -215,30 +367,35 @@ void hotel_check_in(Room *head) {
         return;
     }
 
-    if (room->status == ROOM_OCCUPIED) {
-        printf("This room is already occupied.\n");
+    if (!input_read_int("Enter check-in day: ", &day) || day < 0) {
+        printf("Invalid day input.\n");
         return;
     }
 
-    if (room->status == ROOM_AVAILABLE) {
-        printf("This room is not reserved. Proceeding with walk-in check-in.\n");
-        input_guest_info(room);
-        if (room->stayDays <= 0 || room->guestName[0] == '\0') {
-            reset_guest_info(room);
-            printf("Check-in failed: incomplete input.\n");
-            return;
-        }
+    res = find_reservation_by_day(room, day);
+    if (res == NULL) {
+        printf("No reservation covers this day.\n");
+        return;
     }
 
-    room->status = ROOM_OCCUPIED;
-    printf("Check-in successful: Room %d\n", room->roomNumber);
+    if (res->checkedIn) {
+        printf("This reservation is already checked in.\n");
+        return;
+    }
+
+    res->checkedIn = 1;
+    printf("Check-in successful: Room %d, Guest %s.\n", room->roomNumber, res->guestName);
 }
 
 void hotel_check_out(Room *head) {
-    int roomNumber = input_room_number();
+    int roomNumber;
+    int day;
     Room *room;
+    Reservation *res;
+    Reservation *prev;
     double bill;
 
+    roomNumber = input_room_number();
     if (roomNumber < 0) {
         printf("Invalid room number input.\n");
         return;
@@ -250,15 +407,29 @@ void hotel_check_out(Room *head) {
         return;
     }
 
-    if (room->status != ROOM_OCCUPIED) {
-        printf("This room is not currently occupied.\n");
+    if (!input_read_int("Enter check-out day: ", &day) || day < 0) {
+        printf("Invalid day input.\n");
         return;
     }
 
-    bill = room->price * room->stayDays;
+    res = find_reservation_by_day(room, day);
+    if (res == NULL || !res->checkedIn) {
+        printf("No checked-in reservation covers this day.\n");
+        return;
+    }
+
+    bill = room->price * (res->endDay - res->startDay);
+
+    prev = NULL;
+    find_exact_reservation(room, res->startDay, res->endDay, &prev);
+    if (prev == NULL) {
+        room->reservations = res->next;
+    } else {
+        prev->next = res->next;
+    }
+
     printf("Check-out successful. Total bill: %.2f\n", bill);
-    room->status = ROOM_AVAILABLE;
-    reset_guest_info(room);
+    free(res);
 }
 
 void hotel_query_by_guest(Room *head) {
@@ -271,9 +442,14 @@ void hotel_query_by_guest(Room *head) {
     }
 
     while (head != NULL) {
-        if (head->status != ROOM_AVAILABLE && strstr(head->guestName, name) != NULL) {
-            print_room(head);
-            found = 1;
+        Reservation *res = head->reservations;
+        while (res != NULL) {
+            if (strstr(res->guestName, name) != NULL) {
+                printf("Room:%d | Type:%d | Price:%.2f\n", head->roomNumber, head->roomType, head->price);
+                print_reservation(res, head->price);
+                found = 1;
+            }
+            res = res->next;
         }
         head = head->next;
     }
@@ -284,26 +460,29 @@ void hotel_query_by_guest(Room *head) {
 }
 
 void hotel_print_statistics(Room *head) {
-    int available = 0;
-    int reserved = 0;
-    int occupied = 0;
+    int roomCount = 0;
+    int reservationCount = 0;
+    int checkedInCount = 0;
     double expectedRevenue = 0.0;
 
     while (head != NULL) {
-        if (head->status == ROOM_AVAILABLE) {
-            available++;
-        } else if (head->status == ROOM_RESERVED) {
-            reserved++;
-            expectedRevenue += head->price * head->stayDays;
-        } else {
-            occupied++;
-            expectedRevenue += head->price * head->stayDays;
+        Reservation *res = head->reservations;
+        roomCount++;
+
+        while (res != NULL) {
+            reservationCount++;
+            if (res->checkedIn) {
+                checkedInCount++;
+            }
+            expectedRevenue += head->price * (res->endDay - res->startDay);
+            res = res->next;
         }
+
         head = head->next;
     }
 
-    printf("Available:%d Reserved:%d Occupied:%d\n", available, reserved, occupied);
-    printf("Current estimated revenue: %.2f\n", expectedRevenue);
+    printf("Rooms:%d Reservations:%d Checked-in:%d\n", roomCount, reservationCount, checkedInCount);
+    printf("Estimated revenue from all segments: %.2f\n", expectedRevenue);
 }
 
 void hotel_add_room(Room **head) {
@@ -362,8 +541,8 @@ void hotel_remove_room(Room **head) {
         return;
     }
 
-    if (current->status == ROOM_OCCUPIED) {
-        printf("This room is occupied and cannot be deleted.\n");
+    if (current->reservations != NULL) {
+        printf("This room has reservations and cannot be deleted.\n");
         return;
     }
 

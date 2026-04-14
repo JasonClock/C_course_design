@@ -5,7 +5,10 @@
 #ifndef C_MENU_H
 #define C_MENU_H
 
-void menu_show(void);
+#include "role.h"
+
+void menu_show(UserRole role);
+int menu_read_role(void);
 int menu_read_choice(void);
 
 #endif //C_MENU_H

@@ -7,6 +7,7 @@ add_executable(C
         main.c
         information/src/hotel.c
         information/src/menu.c
+        information/src/role.c
         information/src/input.c)
 
 target_include_directories(C PRIVATE information/inc)

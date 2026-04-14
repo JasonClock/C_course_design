@@ -3,56 +3,50 @@
 #include "hotel.h"
 #include "menu.h"
 
-int main(void) {
+static UserRole read_user_role(void) {
+    int roleChoice;
+    while (1) {
+        roleChoice = menu_read_role();
+        if (roleChoice == USER_ADMIN || roleChoice == USER_CUSTOMER) {
+            return (UserRole)roleChoice;
+        }
+        printf("Please choose 1 (Administrator) or 2 (Customer).\n");
+    }
+}
 
+int main(void) {
+    UserRole role;
+    const UserOps *ops;
     Room *roomList = NULL;
 
     hotel_init(&roomList);
+    role = read_user_role();
+    ops = role_get_ops(role);
+
+    if (ops == NULL) {
+        hotel_free(roomList);
+        printf("Role initialization failed.\n");
+        return 1;
+    }
+
+    printf("Login as %s.\n", ops->name);
 
     while (1) {
         int choice;
+        int result;
 
-        menu_show();
+        menu_show(role);
         choice = menu_read_choice();
+        result = ops->execute(choice, &roomList);
 
-        switch (choice) {
-            case 1:
-                hotel_list_all(roomList);
-                break;
-            case 2:
-                hotel_list_available(roomList);
-                break;
-            case 3:
-                hotel_reserve(roomList);
-                break;
-            case 4:
-                hotel_cancel_reservation(roomList);
-                break;
-            case 5:
-                hotel_check_in(roomList);
-                break;
-            case 6:
-                hotel_check_out(roomList);
-                break;
-            case 7:
-                hotel_query_by_guest(roomList);
-                break;
-            case 8:
-                hotel_print_statistics(roomList);
-                break;
-            case 9:
-                hotel_add_room(&roomList);
-                break;
-            case 10:
-                hotel_remove_room(&roomList);
-                break;
-            case 0:
-                hotel_free(roomList);
-                printf("System exited.\n");
-                return 0;
-            default:
-                printf("Please enter a valid number.\n");
-                break;
+        if (result == 0) {
+            hotel_free(roomList);
+            printf("System exited.\n");
+            return 0;
+        }
+
+        if (result < 0) {
+            printf("Permission denied or invalid option for this role.\n");
         }
     }
 }
