@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PAYMENT_LOCK_TIMEOUT_SECONDS 300
+
 static Reservation *create_reservation(const char *guestName, const char *phone, int startDay, int endDay) {
     Reservation *node = (Reservation *)malloc(sizeof(Reservation));
     if (node == NULL) {
@@ -18,6 +20,8 @@ static Reservation *create_reservation(const char *guestName, const char *phone,
     node->startDay = startDay;
     node->endDay = endDay;
     node->checkedIn = 0;
+    node->paymentStatus = PAYMENT_LOCKED;
+    node->lockTime = time(NULL);
     strncpy(node->guestName, guestName, NAME_LEN - 1);
     node->guestName[NAME_LEN - 1] = '\0';
     strncpy(node->phone, phone, PHONE_LEN - 1);
@@ -99,6 +103,41 @@ static int periods_overlap(int startA, int endA, int startB, int endB) {
     return !(endA <= startB || endB <= startA);
 }
 
+static int reservation_lock_expired(const Reservation *res, time_t now) {
+    if (res->paymentStatus != PAYMENT_LOCKED) {
+        return 0;
+    }
+    return difftime(now, res->lockTime) >= PAYMENT_LOCK_TIMEOUT_SECONDS;
+}
+
+static void cleanup_expired_locks_in_room(Room *room, time_t now) {
+    Reservation *current = room->reservations;
+    Reservation *prev = NULL;
+
+    while (current != NULL) {
+        Reservation *next = current->next;
+        if (reservation_lock_expired(current, now)) {
+            if (prev == NULL) {
+                room->reservations = next;
+            } else {
+                prev->next = next;
+            }
+            free(current);
+        } else {
+            prev = current;
+        }
+        current = next;
+    }
+}
+
+static void cleanup_expired_locks(Room *head) {
+    time_t now = time(NULL);
+    while (head != NULL) {
+        cleanup_expired_locks_in_room(head, now);
+        head = head->next;
+    }
+}
+
 static int room_has_overlap(const Room *room, int startDay, int endDay) {
     const Reservation *current = room->reservations;
     while (current != NULL) {
@@ -161,15 +200,20 @@ static Reservation *find_reservation_by_day(Room *room, int day) {
     return NULL;
 }
 
-static const char *reservation_state_text(int checkedIn) {
-    return checkedIn ? "Checked-in" : "Reserved";
+static const char *payment_state_text(const Reservation *res) {
+    return res->paymentStatus == PAYMENT_PAID ? "Paid" : "Locked-Unpaid";
+}
+
+static const char *reservation_state_text(const Reservation *res) {
+    return res->checkedIn ? "Checked-in" : "Reserved";
 }
 
 static void print_reservation(const Reservation *res, double price) {
-    printf("  - [%d, %d) | %s | Guest:%s | Phone:%s | Bill:%.2f\n",
+    printf("  - [%d, %d) | %s | %s | Guest:%s | Phone:%s | Bill:%.2f\n",
            res->startDay,
            res->endDay,
-           reservation_state_text(res->checkedIn),
+           reservation_state_text(res),
+           payment_state_text(res),
            res->guestName,
            res->phone,
            price * (res->endDay - res->startDay));
@@ -218,6 +262,7 @@ void hotel_free(Room *head) {
 }
 
 void hotel_list_all(Room *head) {
+    cleanup_expired_locks(head);
     if (head == NULL) {
         printf("No room information is available.\n");
         return;
@@ -233,6 +278,8 @@ void hotel_list_available(Room *head) {
     int startDay;
     int endDay;
     int found = 0;
+
+    cleanup_expired_locks(head);
 
     if (!input_period(&startDay, &endDay)) {
         printf("Invalid period input.\n");
@@ -260,6 +307,9 @@ void hotel_reserve(Room *head) {
     char phone[PHONE_LEN];
     Room *room;
     Reservation *node;
+    char payNow[8];
+
+    cleanup_expired_locks(head);
 
     roomNumber = input_room_number();
     if (roomNumber < 0) {
@@ -300,7 +350,62 @@ void hotel_reserve(Room *head) {
     }
 
     insert_reservation_sorted(room, node);
-    printf("Reservation successful: Room %d, period [%d, %d).\n", room->roomNumber, startDay, endDay);
+    printf("Reservation created and payment locked: Room %d, period [%d, %d).\n", room->roomNumber, startDay, endDay);
+
+    if (!input_read_line("Pay now? (y/n): ", payNow, (int)sizeof(payNow))) {
+        printf("Payment not completed. Lock will expire in 5 minutes.\n");
+        return;
+    }
+
+    if (payNow[0] == 'y' || payNow[0] == 'Y') {
+        node->paymentStatus = PAYMENT_PAID;
+        node->lockTime = 0;
+        printf("Payment successful. Reservation confirmed.\n");
+    } else {
+        printf("Payment pending. Lock will expire in 5 minutes.\n");
+    }
+}
+
+void hotel_pay_reservation(Room *head) {
+    int roomNumber;
+    int startDay;
+    int endDay;
+    Room *room;
+    Reservation *res;
+
+    cleanup_expired_locks(head);
+
+    roomNumber = input_room_number();
+    if (roomNumber < 0) {
+        printf("Invalid room number input.\n");
+        return;
+    }
+
+    room = find_room(head, roomNumber);
+    if (room == NULL) {
+        printf("Room not found.\n");
+        return;
+    }
+
+    if (!input_period(&startDay, &endDay)) {
+        printf("Invalid period input.\n");
+        return;
+    }
+
+    res = find_exact_reservation(room, startDay, endDay, NULL);
+    if (res == NULL) {
+        printf("No matching reservation for this period.\n");
+        return;
+    }
+
+    if (res->paymentStatus == PAYMENT_PAID) {
+        printf("This reservation is already paid.\n");
+        return;
+    }
+
+    res->paymentStatus = PAYMENT_PAID;
+    res->lockTime = 0;
+    printf("Payment successful. Reservation confirmed.\n");
 }
 
 void hotel_cancel_reservation(Room *head) {
@@ -310,6 +415,8 @@ void hotel_cancel_reservation(Room *head) {
     Room *room;
     Reservation *target;
     Reservation *prev;
+
+    cleanup_expired_locks(head);
 
     roomNumber = input_room_number();
     if (roomNumber < 0) {
@@ -355,6 +462,8 @@ void hotel_check_in(Room *head) {
     Room *room;
     Reservation *res;
 
+    cleanup_expired_locks(head);
+
     roomNumber = input_room_number();
     if (roomNumber < 0) {
         printf("Invalid room number input.\n");
@@ -383,6 +492,11 @@ void hotel_check_in(Room *head) {
         return;
     }
 
+    if (res->paymentStatus != PAYMENT_PAID) {
+        printf("Check-in denied: payment is not completed.\n");
+        return;
+    }
+
     res->checkedIn = 1;
     printf("Check-in successful: Room %d, Guest %s.\n", room->roomNumber, res->guestName);
 }
@@ -394,6 +508,8 @@ void hotel_check_out(Room *head) {
     Reservation *res;
     Reservation *prev;
     double bill;
+
+    cleanup_expired_locks(head);
 
     roomNumber = input_room_number();
     if (roomNumber < 0) {
@@ -436,6 +552,8 @@ void hotel_query_by_guest(Room *head) {
     char name[NAME_LEN];
     int found = 0;
 
+    cleanup_expired_locks(head);
+
     if (!input_read_line("Enter guest name keyword: ", name, NAME_LEN) || name[0] == '\0') {
         printf("Input is empty.\n");
         return;
@@ -463,7 +581,11 @@ void hotel_print_statistics(Room *head) {
     int roomCount = 0;
     int reservationCount = 0;
     int checkedInCount = 0;
+    int paidCount = 0;
+    int lockedCount = 0;
     double expectedRevenue = 0.0;
+
+    cleanup_expired_locks(head);
 
     while (head != NULL) {
         Reservation *res = head->reservations;
@@ -474,6 +596,11 @@ void hotel_print_statistics(Room *head) {
             if (res->checkedIn) {
                 checkedInCount++;
             }
+            if (res->paymentStatus == PAYMENT_PAID) {
+                paidCount++;
+            } else {
+                lockedCount++;
+            }
             expectedRevenue += head->price * (res->endDay - res->startDay);
             res = res->next;
         }
@@ -481,7 +608,12 @@ void hotel_print_statistics(Room *head) {
         head = head->next;
     }
 
-    printf("Rooms:%d Reservations:%d Checked-in:%d\n", roomCount, reservationCount, checkedInCount);
+    printf("Rooms:%d Reservations:%d Checked-in:%d Paid:%d Locked:%d\n",
+           roomCount,
+           reservationCount,
+           checkedInCount,
+           paidCount,
+           lockedCount);
     printf("Estimated revenue from all segments: %.2f\n", expectedRevenue);
 }
 
@@ -525,6 +657,8 @@ void hotel_remove_room(Room **head) {
     int number = input_room_number();
     Room *current = *head;
     Room *prev = NULL;
+
+    cleanup_expired_locks(*head);
 
     if (number < 0) {
         printf("Invalid room number input.\n");

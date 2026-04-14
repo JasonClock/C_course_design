@@ -14,21 +14,23 @@ void menu_show(UserRole role) {
         printf("1. View all rooms\n");
         printf("2. View available rooms\n");
         printf("3. Reserve a room\n");
-        printf("4. Cancel reservation\n");
-        printf("5. Check in\n");
-        printf("6. Check out\n");
-        printf("7. Search by guest name\n");
-        printf("8. Statistics\n");
-        printf("9. Add room\n");
-        printf("10. Delete room\n");
+        printf("4. Pay for reservation\n");
+        printf("5. Cancel reservation\n");
+        printf("6. Check in\n");
+        printf("7. Check out\n");
+        printf("8. Search by guest name\n");
+        printf("9. Statistics\n");
+        printf("10. Add room\n");
+        printf("11. Delete room\n");
     } else {
         printf("Role: Customer\n");
         printf("1. View all rooms\n");
         printf("2. View available rooms\n");
         printf("3. Reserve a room\n");
-        printf("4. Check in\n");
-        printf("5. Check out\n");
-        printf("6. Search by guest name\n");
+        printf("4. Pay for reservation\n");
+        printf("5. Check in\n");
+        printf("6. Check out\n");
+        printf("7. Search by guest name\n");
     }
     printf("0. Exit\n");
 }

@@ -5,6 +5,8 @@
 #ifndef C_HOTEL_H
 #define C_HOTEL_H
 
+#include <time.h>
+
 #define NAME_LEN 50
 #define PHONE_LEN 20
 
@@ -14,10 +16,17 @@ typedef enum {
     ROOM_OCCUPIED = 2
 } RoomStatus;
 
+typedef enum {
+    PAYMENT_LOCKED = 0,
+    PAYMENT_PAID = 1
+} PaymentStatus;
+
 typedef struct Reservation {
     int startDay;
     int endDay;
     int checkedIn;
+    PaymentStatus paymentStatus;
+    time_t lockTime;
     char guestName[NAME_LEN];
     char phone[PHONE_LEN];
     struct Reservation *next;
@@ -38,6 +47,7 @@ void hotel_list_all(Room *head);
 void hotel_list_available(Room *head);
 /*对房间操作*/
 void hotel_reserve(Room *head);
+void hotel_pay_reservation(Room *head);
 void hotel_cancel_reservation(Room *head);
 void hotel_check_in(Room *head);
 void hotel_check_out(Room *head);
