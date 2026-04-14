@@ -21,9 +21,15 @@ typedef enum {
     PAYMENT_PAID = 1
 } PaymentStatus;
 
+typedef struct Date {
+    int year;
+    int month;
+    int day;
+} Date;
+
 typedef struct Reservation {
-    int startDay;
-    int endDay;
+    Date startDate;
+    Date endDate;
     int checkedIn;
     PaymentStatus paymentStatus;
     time_t lockTime;

@@ -14,27 +14,24 @@ static int admin_execute(int choice, Room **roomList) {
             hotel_reserve(*roomList);
             return 1;
         case 4:
-            hotel_pay_reservation(*roomList);
-            return 1;
-        case 5:
             hotel_cancel_reservation(*roomList);
             return 1;
-        case 6:
+        case 5:
             hotel_check_in(*roomList);
             return 1;
-        case 7:
+        case 6:
             hotel_check_out(*roomList);
             return 1;
-        case 8:
+        case 7:
             hotel_query_by_guest(*roomList);
             return 1;
-        case 9:
+        case 8:
             hotel_print_statistics(*roomList);
             return 1;
-        case 10:
+        case 9:
             hotel_add_room(roomList);
             return 1;
-        case 11:
+        case 10:
             hotel_remove_room(roomList);
             return 1;
         case 0:
@@ -56,15 +53,12 @@ static int customer_execute(int choice, Room **roomList) {
             hotel_reserve(*roomList);
             return 1;
         case 4:
-            hotel_pay_reservation(*roomList);
-            return 1;
-        case 5:
             hotel_check_in(*roomList);
             return 1;
-        case 6:
+        case 5:
             hotel_check_out(*roomList);
             return 1;
-        case 7:
+        case 6:
             hotel_query_by_guest(*roomList);
             return 1;
         case 0:
