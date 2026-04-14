@@ -3,6 +3,8 @@
 
 #include "hotel.h"
 
+#define HOTEL_DATA_DIR "data_house"
+
 int hotel_storage_load(Room **head, const char *dataDir);
 int hotel_storage_save(Room *head, const char *dataDir);
 int hotel_storage_view(const char *dataDir);

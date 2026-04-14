@@ -20,7 +20,7 @@ int main(void) {
     const UserOps *ops;
     Room *roomList = NULL;
 
-    if (!hotel_storage_load(&roomList, "data_house")) {
+    if (!hotel_storage_load(&roomList, HOTEL_DATA_DIR)) {
         hotel_init(&roomList);
     }
     role = read_user_role();
@@ -43,7 +43,7 @@ int main(void) {
         result = ops->execute(choice, &roomList);
 
         if (result == 0) {
-            if (!hotel_storage_save(roomList, "data_house")) {
+            if (!hotel_storage_save(roomList, HOTEL_DATA_DIR)) {
                 printf("Warning: failed to save data to data_house.\n");
             }
             hotel_free(roomList);

@@ -41,12 +41,12 @@ static int admin_execute(int choice, Room **roomList) {
             hotel_remove_room(roomList);
             return 1;
         case 12:
-            if (!hotel_storage_view("data_house")) {
+            if (!hotel_storage_view(HOTEL_DATA_DIR)) {
                 printf("Failed to open data_house data.\n");
             }
             return 1;
         case 13:
-            if (!hotel_storage_reset(roomList, "data_house")) {
+            if (!hotel_storage_reset(roomList, HOTEL_DATA_DIR)) {
                 printf("Failed to reset database.\n");
             } else {
                 printf("Database reset successfully.\n");

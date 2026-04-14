@@ -2,6 +2,7 @@
 
 #include <direct.h>
 #include <errno.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,87 @@
 #define ROOMS_FILE_NAME "rooms.db"
 #define RESERVATIONS_FILE_NAME "reservations.db"
 #define SNAPSHOT_PREFIX "#SNAPSHOT "
+
+static int make_path(char *outPath, size_t size, const char *dir, const char *fileName);
+
+static int path_exists(const char *path) {
+    struct _stat info;
+    if (path == NULL) {
+        return 0;
+    }
+    return _stat(path, &info) == 0;
+}
+
+static int path_is_dir(const char *path) {
+    struct _stat info;
+    if (path == NULL) {
+        return 0;
+    }
+    if (_stat(path, &info) != 0) {
+        return 0;
+    }
+    return (info.st_mode & _S_IFDIR) != 0;
+}
+
+static int make_candidate_dir(char *outPath, size_t size, const char *prefix, const char *dataDir) {
+    int written;
+    if (prefix == NULL || prefix[0] == '\0') {
+        written = snprintf(outPath, size, "%s", dataDir);
+    } else {
+        written = snprintf(outPath, size, "%s/%s", prefix, dataDir);
+    }
+    return written > 0 && (size_t)written < size;
+}
+
+static int resolve_data_dir(char *outPath, size_t size, const char *dataDir) {
+    const char *prefixes[] = {"..", "../..", ""};
+    int bestScore = -1;
+    size_t i;
+
+    if (outPath == NULL || size == 0 || dataDir == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
+        char candidate[260];
+        char roomPath[260];
+        char reservationPath[260];
+        int score = 0;
+
+        if (!make_candidate_dir(candidate, sizeof(candidate), prefixes[i], dataDir)) {
+            continue;
+        }
+
+        if (!make_path(roomPath, sizeof(roomPath), candidate, ROOMS_FILE_NAME) ||
+            !make_path(reservationPath, sizeof(reservationPath), candidate, RESERVATIONS_FILE_NAME)) {
+            continue;
+        }
+
+        if (path_is_dir(candidate)) {
+            score += 1;
+        }
+        if (path_exists(roomPath)) {
+            score += 4;
+        }
+        if (path_exists(reservationPath)) {
+            score += 2;
+        }
+
+        if (score > bestScore) {
+            int written = snprintf(outPath, size, "%s", candidate);
+            if (written > 0 && (size_t)written < size) {
+                bestScore = score;
+            }
+        }
+    }
+
+    if (bestScore < 0) {
+        int written = snprintf(outPath, size, "%s", dataDir);
+        return written > 0 && (size_t)written < size;
+    }
+
+    return 1;
+}
 
 static int make_path(char *outPath, size_t size, const char *dir, const char *fileName) {
     int written = snprintf(outPath, size, "%s/%s", dir, fileName);
@@ -142,6 +224,7 @@ static int print_file_with_title(const char *title, const char *filePath) {
 }
 
 int hotel_storage_load(Room **head, const char *dataDir) {
+    char resolvedDir[260];
     char roomPath[260];
     char reservationPath[260];
     FILE *roomFile;
@@ -155,8 +238,12 @@ int hotel_storage_load(Room **head, const char *dataDir) {
 
     *head = NULL;
 
-    if (!make_path(roomPath, sizeof(roomPath), dataDir, ROOMS_FILE_NAME) ||
-        !make_path(reservationPath, sizeof(reservationPath), dataDir, RESERVATIONS_FILE_NAME)) {
+    if (!resolve_data_dir(resolvedDir, sizeof(resolvedDir), dataDir)) {
+        return 0;
+    }
+
+    if (!make_path(roomPath, sizeof(roomPath), resolvedDir, ROOMS_FILE_NAME) ||
+        !make_path(reservationPath, sizeof(reservationPath), resolvedDir, RESERVATIONS_FILE_NAME)) {
         return 0;
     }
 
@@ -277,6 +364,7 @@ int hotel_storage_load(Room **head, const char *dataDir) {
 }
 
 int hotel_storage_save(Room *head, const char *dataDir) {
+    char resolvedDir[260];
     char roomPath[260];
     char reservationPath[260];
     FILE *roomFile;
@@ -287,12 +375,16 @@ int hotel_storage_save(Room *head, const char *dataDir) {
         return 0;
     }
 
-    if (!ensure_data_dir(dataDir)) {
+    if (!resolve_data_dir(resolvedDir, sizeof(resolvedDir), dataDir)) {
         return 0;
     }
 
-    if (!make_path(roomPath, sizeof(roomPath), dataDir, ROOMS_FILE_NAME) ||
-        !make_path(reservationPath, sizeof(reservationPath), dataDir, RESERVATIONS_FILE_NAME)) {
+    if (!ensure_data_dir(resolvedDir)) {
+        return 0;
+    }
+
+    if (!make_path(roomPath, sizeof(roomPath), resolvedDir, ROOMS_FILE_NAME) ||
+        !make_path(reservationPath, sizeof(reservationPath), resolvedDir, RESERVATIONS_FILE_NAME)) {
         return 0;
     }
 
@@ -344,6 +436,7 @@ int hotel_storage_save(Room *head, const char *dataDir) {
 }
 
 int hotel_storage_view(const char *dataDir) {
+    char resolvedDir[260];
     char roomPath[260];
     char reservationPath[260];
 
@@ -351,8 +444,12 @@ int hotel_storage_view(const char *dataDir) {
         return 0;
     }
 
-    if (!make_path(roomPath, sizeof(roomPath), dataDir, ROOMS_FILE_NAME) ||
-        !make_path(reservationPath, sizeof(reservationPath), dataDir, RESERVATIONS_FILE_NAME)) {
+    if (!resolve_data_dir(resolvedDir, sizeof(resolvedDir), dataDir)) {
+        return 0;
+    }
+
+    if (!make_path(roomPath, sizeof(roomPath), resolvedDir, ROOMS_FILE_NAME) ||
+        !make_path(reservationPath, sizeof(reservationPath), resolvedDir, RESERVATIONS_FILE_NAME)) {
         return 0;
     }
 
@@ -364,6 +461,7 @@ int hotel_storage_view(const char *dataDir) {
 }
 
 int hotel_storage_reset(Room **head, const char *dataDir) {
+    char resolvedDir[260];
     char roomPath[260];
     char reservationPath[260];
     FILE *roomFile;
@@ -373,12 +471,16 @@ int hotel_storage_reset(Room **head, const char *dataDir) {
         return 0;
     }
 
-    if (!ensure_data_dir(dataDir)) {
+    if (!resolve_data_dir(resolvedDir, sizeof(resolvedDir), dataDir)) {
         return 0;
     }
 
-    if (!make_path(roomPath, sizeof(roomPath), dataDir, ROOMS_FILE_NAME) ||
-        !make_path(reservationPath, sizeof(reservationPath), dataDir, RESERVATIONS_FILE_NAME)) {
+    if (!ensure_data_dir(resolvedDir)) {
+        return 0;
+    }
+
+    if (!make_path(roomPath, sizeof(roomPath), resolvedDir, ROOMS_FILE_NAME) ||
+        !make_path(reservationPath, sizeof(reservationPath), resolvedDir, RESERVATIONS_FILE_NAME)) {
         return 0;
     }
 
@@ -400,6 +502,6 @@ int hotel_storage_reset(Room **head, const char *dataDir) {
     }
 
     hotel_init(head);
-    return hotel_storage_save(*head, dataDir);
+    return hotel_storage_save(*head, resolvedDir);
 }
 
