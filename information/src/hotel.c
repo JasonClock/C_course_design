@@ -205,6 +205,35 @@ static void append_room(Room **head, Room *node) {
     current->next = node;
 }
 
+/**
+ * 功能：按房号升序重排房间链表。
+ * @param head 房间链表头指针的地址，函数会原地重连 next 指针并更新头结点。
+ */
+static void sort_rooms_by_number(Room **head) {
+    Room *sorted = NULL;
+    Room *current;
+
+    if (head == NULL || *head == NULL || (*head)->next == NULL) {
+        return;
+    }
+
+    current = *head;
+    while (current != NULL) {
+        Room *next = current->next;
+        Room **insertPos = &sorted;
+
+        while (*insertPos != NULL && (*insertPos)->roomNumber <= current->roomNumber) {
+            insertPos = &((*insertPos)->next);
+        }
+
+        current->next = *insertPos;
+        *insertPos = current;
+        current = next;
+    }
+
+    *head = sorted;
+}
+
 static Room *find_room(Room *head, int roomNumber) {
     while (head != NULL) {
         if (head->roomNumber == roomNumber) {
@@ -763,6 +792,8 @@ void hotel_add_room(Room **head) {
     }
 
     append_room(head, newRoom);
+    /* 每次新增后立即按房号重排，保证展示和后续保存顺序一致。 */
+    sort_rooms_by_number(head);
     printf("Room added successfully.\n");
 }
 
